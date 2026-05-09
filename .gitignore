@@ -1,0 +1,8 @@
+# Build artifacts
+target/
+
+# Large model files (download from HuggingFace)
+model/model.safetensors
+
+# Claude Code local settings
+.claude/
