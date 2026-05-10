@@ -1,4 +1,4 @@
-# qwen3.5-rs
+# qwen3-rs
 
 *A from-scratch implementation of Qwen3-0.6B inference in Rust, built for education.*
 
