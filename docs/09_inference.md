@@ -440,9 +440,15 @@ The model has a special "end of sequence" (EOS) token that signals it has
 finished generating. When the model samples the EOS token, it means "I have
 nothing more to say." The generation loop should stop.
 
-The EOS token is defined in the tokenizer configuration. For the Qwen3
-tokenizer, the EOS token ID is 151645 (corresponding to `<|im_end|>`), and
-there is also an end-of-text token at ID 151643.
+The EOS token is read from the model's `config.json` file (`eos_token_id`
+field). For Qwen3-0.6B this is **151645** (the ChatML end-of-turn marker
+`<|im_end|>`), overriding the tokenizer's default heuristic which would
+otherwise check for `<|endoftext|>` (151643) first.
+
+At load time, `InferenceEngine::load` parses `config.json`, checks for an
+`eos_token_id` field, and calls `tokenizer.set_eos_token_id(id)` to override
+the tokenizer's built-in EOS lookup. This ensures the correct stop token
+regardless of which special tokens the tokenizer was trained with.
 
 The check is:
 
@@ -548,22 +554,47 @@ This design separates the generation logic from the output display. The same
 
 ### The InferenceEngine
 
-Our `src/inference.rs` module will provide an `InferenceEngine` struct that
-encapsulates the model, tokenizer, and sampling configuration:
+Our `src/inference.rs` module provides an `InferenceEngine` struct that
+encapsulates the model, tokenizer, sampling configuration, and PRNG:
 
 ```rust
 pub struct InferenceEngine {
     model: QwenModel,
     tokenizer: Tokenizer,
     sampling_config: SamplingConfig,
-    eos_token_id: usize,
+    rng: XorShift64,
 }
 ```
 
 The engine owns all the components needed for generation. The `QwenModel`
 holds the weights and KV caches, the `Tokenizer` handles text-to-ID and
 ID-to-text conversion, and the `SamplingConfig` controls the sampling
-strategy.
+strategy. The `rng` field is a persistent PRNG (XorShift64) that is
+advanced one step per generated token, ensuring that each non-greedy
+draw produces a different random value — a critical fix from the naive
+approach of creating a fresh RNG from the same seed on every call.
+
+#### ChatML Template
+
+Qwen3 is a chat model trained on the **ChatML** format. For generation to
+work correctly, prompts must be wrapped in a template that tells the model
+its role:
+
+```
+<|im_start|>system
+You are Qwen, created by Alibaba Cloud. You are a helpful assistant.<|im_end|>
+<|im_start|>user
+{prompt}<|im_end|>
+<|im_start|>assistant
+```
+
+The `inference.rs` module exports `format_chat_template()` which performs
+this wrapping. The CLI (`main.rs`) applies it automatically for every prompt,
+so users never need to think about the template. The special tokens
+`<|im_start|>` and `<|im_end|>` are recognized by the tokenizer as special
+tokens and encoded directly to their respective IDs (151644 and 151645).
+During decoding, unknown token IDs are silently skipped, so the special
+tokens do not appear in the final output.
 
 ### The generate() Method
 

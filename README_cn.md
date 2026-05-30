@@ -68,7 +68,7 @@ git clone https://huggingface.co/Qwen/Qwen3-0.6B ./model
 # 构建
 cargo build --release
 
-# 单轮提示
+# 单轮提示（自动应用 ChatML 模板）
 cargo run --release -- --model-dir ./model --prompt "用一句话解释 Rust"
 
 # 交互式对话
@@ -80,6 +80,11 @@ cargo run --release -- --model-dir ./model --prompt "你好" --temperature 0.7 -
 # 贪心解码（确定性输出）
 cargo run --release -- --model-dir ./model --prompt "1+1=" --temperature 0
 ```
+
+> **注意**：提示会自动包装为 Qwen3 ChatML 格式
+> （`<|im_start|>user\n...<|im_end|>\n<|im_start|>assistant\n`），使模型
+> 了解其角色并在 `<|im_end|>` 标记处停止生成。EOS token ID 读取自
+> `config.json`，如果未设置则回退到 `<|endoftext|>`。
 
 ## CLI 选项
 
@@ -150,6 +155,8 @@ cargo test -- --nocapture
 - 单次处理一个请求（无批处理）
 - 分词器简化（可能与 HuggingFace 不完全一致）
 - 无量化支持（尚不支持 f16/bf16 权重）
+- EOS token 从 `config.json` 读取，会覆盖分词器启发式查找
+- PRNG 状态在解码步骤间持久化，确保正确的自回归采样
 
 ## 许可证
 

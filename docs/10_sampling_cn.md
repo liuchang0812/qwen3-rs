@@ -610,12 +610,18 @@ impl Default for SamplingConfig {
 
 这些默认值适用于通用文本生成：适中的 temperature 用于多样化但连贯的输出，top-k 为 50 以消除长尾，top-p 为 0.9 以根据置信度自适应过滤。
 
-### sample() 函数逐步讲解
+### sample_with_rng() 函数逐步讲解
 
-`sample` 函数是主要入口点。它接受一个 logits 切片和一个 `SamplingConfig`，返回一个 token ID。以下是带注释的完整流程：
+核心采样管道实现在 `sample_with_rng` 中，它接受 logits 切片、`SamplingConfig` 和 **PRNG 的可变引用**（`&mut XorShift64`）。调用者提供 RNG，每次调用前进一步，确保每次非贪心 token 采样产生独立的随机值。
+
+还有一个便捷包装 `sample()`，它在每次调用时从种子创建新的 RNG，适用于一次性采样，但**不适合自回归生成**，因为它会为每个 token 重用相同的随机数。推理引擎始终使用 `sample_with_rng` 和持久化的 RNG。
 
 ```rust
-pub fn sample(logits: &[f32], config: &SamplingConfig) -> usize {
+pub fn sample_with_rng(
+    logits: &[f32],
+    config: &SamplingConfig,
+    rng: &mut XorShift64,
+) -> usize {
     // 步骤 1：Temperature == 0 意味着贪心。
     // 立即短路以避免不必要的计算。
     if config.temperature == 0.0 {
@@ -680,21 +686,9 @@ pub fn sample(logits: &[f32], config: &SamplingConfig) -> usize {
         }
     }
 
-    // 步骤 6：使用我们的 XorShift64 PRNG 进行 CDF 采样。
-    // 在 [0, 1) 中抽取一个随机数 r，遍历累积分布，
-    // 返回 cumsum > r 的第一个索引。
-    let mut rng = XorShift64::new(config.seed.unwrap_or(12345));
-    let r = rng.next_f32();
-    let mut cumsum = 0.0f32;
-    for (i, &p) in scaled.iter().enumerate() {
-        cumsum += p;
-        if cumsum > r {
-            return i;
-        }
-    }
-
-    // 回退：返回最后一个索引（处理浮点舍入）。
-    scaled.len() - 1
+    // 步骤 6：使用调用者提供的 RNG 进行 CDF 采样。
+    // RNG 每次前进一步，确保后续调用产生不同的随机值。
+    sample_from_cdf(&scaled, rng)
 }
 ```
 

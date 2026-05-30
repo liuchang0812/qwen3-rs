@@ -333,7 +333,9 @@ if len(generated_tokens) >= max_tokens:
 
 模型有一个特殊的"序列结束"（EOS）token，表示它已完成生成。当模型采样到 EOS token 时，意味着"我没什么要说的了。"生成循环应该停止。
 
-EOS token 在分词器配置中定义。对于 Qwen3 分词器，EOS token ID 是 151645（对应 `<|im_end|>`），还有一个文本结束 token，ID 为 151643。
+EOS token 从模型的 `config.json` 文件（`eos_token_id` 字段）中读取。对于 Qwen3-0.6B 是 **151645**（ChatML 聊天结束标记 `<|im_end|>`），会覆盖分词器默认的启发式查找（否则会优先查找 `<|endoftext|>` 151643）。
+
+在加载时，`InferenceEngine::load` 解析 `config.json`，检查 `eos_token_id` 字段并调用 `tokenizer.set_eos_token_id(id)` 来覆盖分词器内置的 EOS 查找逻辑。这确保无论分词器训练时使用了哪些特殊 token，都能使用正确的停止 token。
 
 检查是：
 
@@ -414,18 +416,32 @@ for step in 0..max_tokens:
 
 ### InferenceEngine
 
-我们的 `src/inference.rs` 模块将提供一个 `InferenceEngine` 结构体，封装模型、分词器和采样配置：
+我们的 `src/inference.rs` 模块提供了一个 `InferenceEngine` 结构体，封装模型、分词器、采样配置和持久化 PRNG：
 
 ```rust
 pub struct InferenceEngine {
     model: QwenModel,
     tokenizer: Tokenizer,
     sampling_config: SamplingConfig,
-    eos_token_id: usize,
+    rng: XorShift64,
 }
 ```
 
-引擎拥有生成所需的所有组件。`QwenModel` 持有权重和 KV cache，`Tokenizer` 处理文本到 ID 和 ID 到文本的转换，`SamplingConfig` 控制采样策略。
+引擎拥有生成所需的所有组件。`QwenModel` 持有权重和 KV cache，`Tokenizer` 处理文本到 ID 和 ID 到文本的转换，`SamplingConfig` 控制采样策略。`rng` 是持久化的 PRNG（XorShift64），每生成一个 token 前进一次，确保每次非贪心采样产生不同的随机值——这修复了每步从相同种子创建新 RNG 导致重复采样的错误。
+
+#### ChatML 模板
+
+Qwen3 是一个基于 **ChatML** 格式训练的对话模型。提示必须包装在指定模型角色的模板中，才能正确生成：
+
+```
+<|im_start|>system
+你是 Qwen，由阿里云创建。你是一个乐于助人的助手。<|im_end|>
+<|im_start|>user
+{prompt}<|im_end|>
+<|im_start|>assistant
+```
+
+`inference.rs` 模块导出了 `format_chat_template()` 函数执行此包装。CLI（`main.rs`）在每次生成时自动应用此模板。特殊 token `<|im_start|>` 和 `<|im_end|>` 由分词器识别并直接编码为对应 ID（151644 和 151645），在解码时这些未知 ID 被静默跳过，因此输出中不会出现特殊 token。
 
 ### generate() 方法
 

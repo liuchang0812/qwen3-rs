@@ -68,7 +68,7 @@ git clone https://huggingface.co/Qwen/Qwen3-0.6B ./model
 # Build
 cargo build --release
 
-# Single prompt
+# Single prompt (automatically formatted with ChatML template)
 cargo run --release -- --model-dir ./model --prompt "Explain Rust in one sentence"
 
 # Interactive chat
@@ -80,6 +80,11 @@ cargo run --release -- --model-dir ./model --prompt "Hello" --temperature 0.7 --
 # Greedy decoding (deterministic)
 cargo run --release -- --model-dir ./model --prompt "1+1=" --temperature 0
 ```
+
+> **Note**: Prompts are automatically wrapped in the Qwen3 ChatML format
+> (`<|im_start|>user\n...<|im_end|>\n<|im_start|>assistant\n`) so the model
+> knows its role and stops generation at the `<|im_end|>` token (ID 151645).
+> The EOS token is read from `config.json`, falling back to `<|endoftext|>`.
 
 ## CLI Options
 
@@ -150,6 +155,8 @@ cargo test -- --nocapture
 - Single request at a time (no batching)
 - Simplified tokenizer (may not exactly match HuggingFace)
 - No quantization (f16/bf16 weights not supported yet)
+- EOS token from `config.json` overrides tokenizer heuristic
+- PRNG state is persisted across decode steps for correct autoregressive sampling
 
 ## License
 

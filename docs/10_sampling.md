@@ -773,14 +773,25 @@ These defaults are suitable for general-purpose text generation: moderate
 temperature for diverse but coherent output, top-k of 50 to eliminate the
 long tail, and top-p of 0.9 to adaptively filter based on confidence.
 
-### The sample() Function Step by Step
+### The sample_with_rng() Function Step by Step
 
-The `sample` function is the main entry point. It takes a slice of logits
-and a `SamplingConfig`, and returns a single token ID. Here is the complete
-pipeline with annotations:
+The core sampling pipeline is implemented in `sample_with_rng`, which takes
+a slice of logits, a `SamplingConfig`, and a **mutable reference to a PRNG**
+(`&mut XorShift64`). The caller provides the RNG and it is advanced by one
+step on each call, ensuring that every non-greedy token draw is independent.
+
+There is also a convenience wrapper `sample()` that creates a fresh RNG from
+the seed on every call — useful for one-off sampling, but **incorrect for
+autoregressive generation** because it would reuse the same random draw for
+every token. The inference engine always uses `sample_with_rng` with a
+persisted RNG.
 
 ```rust
-pub fn sample(logits: &[f32], config: &SamplingConfig) -> usize {
+pub fn sample_with_rng(
+    logits: &[f32],
+    config: &SamplingConfig,
+    rng: &mut XorShift64,
+) -> usize {
     // Step 1: Temperature == 0 means greedy.
     // Short-circuit immediately to avoid unnecessary computation.
     if config.temperature == 0.0 {
@@ -845,21 +856,10 @@ pub fn sample(logits: &[f32], config: &SamplingConfig) -> usize {
         }
     }
 
-    // Step 6: CDF sampling with our XorShift64 PRNG.
-    // Draw a random number r in [0, 1), walk the cumulative distribution,
-    // and return the first index where cumsum > r.
-    let mut rng = XorShift64::new(config.seed.unwrap_or(12345));
-    let r = rng.next_f32();
-    let mut cumsum = 0.0f32;
-    for (i, &p) in scaled.iter().enumerate() {
-        cumsum += p;
-        if cumsum > r {
-            return i;
-        }
-    }
-
-    // Fallback: return the last index (handles floating-point rounding).
-    scaled.len() - 1
+    // Step 6: CDF sampling with the caller-provided RNG.
+    // The RNG is advanced by one step, so subsequent calls with the same
+    // RNG produce different draws — essential for autoregressive generation.
+    sample_from_cdf(&scaled, rng)
 }
 ```
 
