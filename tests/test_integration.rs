@@ -39,6 +39,7 @@ fn make_test_model() -> QwenModel {
         hidden_act: "silu".to_string(),
         tie_word_embeddings: false,
         head_dim: None,
+        eos_token_id: None,
     };
 
     let embed_tokens = Tensor::new(

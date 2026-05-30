@@ -478,6 +478,7 @@ mod tests {
             hidden_act: "silu".to_string(),
             tie_word_embeddings: false,
             head_dim: None,
+            eos_token_id: None,
         };
 
         // Embedding table: [vocab, hidden] with small values

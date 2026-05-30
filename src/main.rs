@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
-use qwen3_5_rs::inference::InferenceEngine;
+use qwen3_5_rs::inference::{format_chat_template, InferenceEngine};
 use qwen3_5_rs::sampling::SamplingConfig;
 
 /// Educational Qwen3-0.6B inference engine
@@ -80,7 +80,8 @@ fn single_prompt_mode(engine: &mut InferenceEngine, prompt: &str, max_tokens: us
     let start = Instant::now();
     let mut token_count = 0usize;
 
-    let _output = engine.generate_with_callback(prompt, max_tokens, |token_text| {
+    let formatted = format_chat_template(prompt);
+    let _output = engine.generate_with_callback(&formatted, max_tokens, |token_text| {
         token_count += 1;
         print!("{}", token_text);
         std::io::stdout().flush().unwrap();
@@ -153,7 +154,8 @@ fn interactive_mode(engine: &mut InferenceEngine, args: &Args) {
         let start = Instant::now();
         let mut token_count = 0usize;
 
-        let _output = engine.generate_with_callback(input, args.max_tokens, |token_text| {
+        let formatted = format_chat_template(input);
+        let _output = engine.generate_with_callback(&formatted, args.max_tokens, |token_text| {
             token_count += 1;
             print!("{}", token_text);
             std::io::stdout().flush().unwrap();

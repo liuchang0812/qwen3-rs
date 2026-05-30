@@ -128,6 +128,17 @@ pub struct ModelConfig {
     /// When absent, [`Self::head_dim()`] falls back to the division.
     #[serde(default)]
     pub head_dim: Option<usize>,
+
+    /// End-of-Sequence token ID from the model config.
+    ///
+    /// For Qwen3-0.6B this is 151645 (`<|im_end|>`), which is the ChatML
+    /// end-of-turn marker. The older `<|endoftext|>` (151643) is also valid
+    /// but not used as the primary EOS in chat models.
+    ///
+    /// When `Some`, this overrides the tokenizer's auto-detected EOS token.
+    /// The tokenizer's `eos_token_id()` method checks this first.
+    #[serde(default)]
+    pub eos_token_id: Option<usize>,
 }
 
 impl ModelConfig {

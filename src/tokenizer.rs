@@ -181,6 +181,13 @@ pub struct Tokenizer {
     merge_ranks: HashMap<(String, String), usize>,
     /// Special tokens (e.g., `<|endoftext|>`) mapped to their IDs.
     special_tokens: HashMap<String, usize>,
+
+    /// Optional override for the EOS token ID, typically read from
+    /// `config.json` (`eos_token_id`). When `Some`, [`Self::eos_token_id`]
+    /// returns this value directly, bypassing the heuristic token-name search.
+    /// This is needed because Qwen3 uses `<|im_end|>` (ID 151645) as the
+    /// EOS token, but the heuristic only checks for `<|endoftext|>` (151643).
+    eos_token_id_override: Option<usize>,
     /// Byte-to-unicode mapping for byte-level BPE.
     ///
     /// `byte_encoder[b]` is the Unicode character that represents byte value `b`
@@ -263,6 +270,7 @@ impl Tokenizer {
             special_tokens,
             byte_encoder,
             byte_decoder,
+            eos_token_id_override: None,
         })
     }
 
@@ -375,18 +383,32 @@ impl Tokenizer {
 
     /// Get the EOS (End of Sequence) token ID.
     ///
-    /// For Qwen3 models, the EOS token is `<|endoftext|>` with ID 151643.
-    /// If that token is not in the vocabulary, this falls back to searching
-    /// for common EOS token names, and finally returns 0 if none is found.
+    /// The priority order is:
+    /// 1. If an `eos_token_id_override` was set (from `config.json`), return it.
+    /// 2. Check for `<|endoftext|>` (151643 for Qwen3) in vocab / special tokens.
+    /// 3. Check for `<|im_end|>` (151645 for Qwen3 ChatML) in vocab / special tokens.
+    /// 4. Check for other common EOS token names: `</s>`, `<|end|>`, `<eos>`, `<|eos|>`.
+    /// 5. Return 0 as a safe fallback.
     pub fn eos_token_id(&self) -> usize {
-        // Qwen3 specific: <|endoftext|> = 151643
+        // Priority 1: override from config.json.
+        if let Some(id) = self.eos_token_id_override {
+            return id;
+        }
+        // Priority 2: <|endoftext|>
         if let Some(&id) = self.vocab.get("<|endoftext|>") {
             return id;
         }
         if let Some(&id) = self.special_tokens.get("<|endoftext|>") {
             return id;
         }
-        // Try other common EOS token names.
+        // Priority 3: <|im_end|> (ChatML end-of-turn marker for Qwen3)
+        if let Some(&id) = self.vocab.get("<|im_end|>") {
+            return id;
+        }
+        if let Some(&id) = self.special_tokens.get("<|im_end|>") {
+            return id;
+        }
+        // Priority 4: other common EOS token names.
         for name in &["</s>", "<|end|>", "<eos>", "<|eos|>"] {
             if let Some(&id) = self.vocab.get(*name) {
                 return id;
@@ -398,6 +420,15 @@ impl Tokenizer {
         // Fallback: return 0. This should not happen with a well-formed
         // tokenizer, but prevents a panic.
         0
+    }
+
+    /// Set an explicit override for the EOS token ID.
+    ///
+    /// This should be called after loading the tokenizer, typically with the
+    /// `eos_token_id` value from `config.json`. Once set, [`Self::eos_token_id`]
+    /// returns this value unconditionally.
+    pub fn set_eos_token_id(&mut self, id: usize) {
+        self.eos_token_id_override = Some(id);
     }
 
     /// Apply BPE merges to a sequence of tokens representing a single word.

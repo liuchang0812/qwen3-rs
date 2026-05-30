@@ -52,11 +52,27 @@
 //! });
 //! ```
 
+use crate::config::ModelConfig;
 use crate::model::QwenModel;
-use crate::sampling::{sample, SamplingConfig};
+use crate::sampling::{sample_with_rng, SamplingConfig, XorShift64};
 use crate::tokenizer::Tokenizer;
 
 use std::path::Path;
+
+/// Default system prompt for Qwen3 chat.
+pub const SYSTEM_PROMPT: &str = "You are Qwen, created by Alibaba Cloud. You are a helpful assistant.";
+
+/// Wrap a user message in the ChatML template that Qwen3 expects.
+///
+/// The formatted prompt tells the model its role (system), the user's
+/// message, and that it should now respond as the assistant.
+pub fn format_chat_template(user_message: &str) -> String {
+    format!(
+        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n",
+        SYSTEM_PROMPT,
+        user_message,
+    )
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // InferenceEngine
@@ -79,6 +95,9 @@ pub struct InferenceEngine {
     model: QwenModel,
     tokenizer: Tokenizer,
     sampling_config: SamplingConfig,
+    /// Persistent PRNG for autoregressive sampling. Advanced one step
+    /// per token so that each non-greedy draw is independent.
+    rng: XorShift64,
 }
 
 impl InferenceEngine {
@@ -93,10 +112,12 @@ impl InferenceEngine {
     /// * `tokenizer`        - A loaded `Tokenizer`.
     /// * `sampling_config`  - Configuration for token sampling.
     pub fn new(model: QwenModel, tokenizer: Tokenizer, sampling_config: SamplingConfig) -> Self {
+        let seed = sampling_config.seed.unwrap_or(12345);
         Self {
             model,
             tokenizer,
             sampling_config,
+            rng: XorShift64::new(seed),
         }
     }
 
@@ -122,11 +143,23 @@ impl InferenceEngine {
         sampling_config: SamplingConfig,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let model = QwenModel::load(model_dir)?;
-        let tokenizer = Tokenizer::from_file(&model_dir.join("tokenizer.json"))?;
+        let mut tokenizer = Tokenizer::from_file(&model_dir.join("tokenizer.json"))?;
+
+        // Read eos_token_id from config.json and override the tokenizer's
+        // heuristic. Qwen3 uses <|im_end|> (151645) as the EOS token, which
+        // differs from <|endoftext|> (151643) that the heuristic checks first.
+        if let Ok(config) = ModelConfig::from_file(&model_dir.join("config.json")) {
+            if let Some(eos_id) = config.eos_token_id {
+                tokenizer.set_eos_token_id(eos_id);
+            }
+        }
+
+        let seed = sampling_config.seed.unwrap_or(12345);
         Ok(Self {
             model,
             tokenizer,
             sampling_config,
+            rng: XorShift64::new(seed),
         })
     }
 
@@ -212,8 +245,8 @@ impl InferenceEngine {
             [last_row_offset..last_row_offset + vocab_size]
             .to_vec();
 
-        // Step 4: Sample the first generated token.
-        let mut sampled_token = sample(&last_logits, &self.sampling_config);
+        // Step 4: Sample the first generated token using the persisted RNG.
+        let mut sampled_token = sample_with_rng(&last_logits, &self.sampling_config, &mut self.rng);
 
         // Track position for KV cache.
         let mut current_pos = seq_len;
@@ -240,10 +273,10 @@ impl InferenceEngine {
             // Step 5b: Forward pass with just the sampled token.
             let logits = self.model.forward(&[sampled_token], current_pos);
 
-            // Step 5c: Sample the next token.
+            // Step 5c: Sample the next token using the persisted RNG.
             // logits shape is [1, vocab_size], so we take row 0.
             let logits_slice: Vec<f32> = logits.data().to_vec();
-            sampled_token = sample(&logits_slice, &self.sampling_config);
+            sampled_token = sample_with_rng(&logits_slice, &self.sampling_config, &mut self.rng);
 
             // Step 5d: Update position.
             current_pos += 1;
@@ -268,7 +301,8 @@ impl InferenceEngine {
     /// The EOS token signals the end of generation. When the model samples
     /// the EOS token during generation, the loop terminates early.
     ///
-    /// For Qwen3 models, the EOS token is `<|endoftext|>` with ID 151643.
+    /// For Qwen3 models the EOS token is `<|im_end|>` with ID 151645
+    /// (from `config.json`), falling back to `<|endoftext|>` (151643).
     pub fn eos_token_id(&self) -> usize {
         self.tokenizer.eos_token_id()
     }
@@ -343,6 +377,7 @@ mod tests {
             hidden_act: "silu".to_string(),
             tie_word_embeddings: false,
             head_dim: None,
+            eos_token_id: None,
         };
 
         // Embedding table: [vocab, hidden] with small values
@@ -479,10 +514,12 @@ mod tests {
 
         let tokenizer = Tokenizer::from_json(tokenizer_json).unwrap();
 
+        let rng = XorShift64::new(sampling_config.seed.unwrap_or(12345));
         InferenceEngine {
             model,
             tokenizer,
             sampling_config,
+            rng,
         }
     }
 

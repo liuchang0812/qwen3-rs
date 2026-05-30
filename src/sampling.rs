@@ -367,9 +367,9 @@ fn sample_from_cdf(probs: &[f32], rng: &mut XorShift64) -> usize {
     probs.len() - 1
 }
 
-/// Main sampling function that applies the full pipeline.
+/// Main sampling function that applies the full pipeline with an external RNG.
 ///
-/// The pipeline applies strategies in this order:
+/// This is the core sampling implementation. It applies strategies in order:
 ///
 /// 1. **Temperature scaling**: if temperature is 0.0, return greedy result
 ///    immediately. Otherwise, divide all logits by temperature.
@@ -383,13 +383,15 @@ fn sample_from_cdf(probs: &[f32], rng: &mut XorShift64) -> usize {
 ///    set whose cumulative probability >= `top_p`, zero out the rest, and
 ///    renormalize.
 ///
-/// 5. **CDF sampling**: draw a random number and walk the cumulative
-///    distribution to pick a token.
+/// 5. **CDF sampling**: draw a random number from `rng` and walk the
+///    cumulative distribution to pick a token.
 ///
 /// # Arguments
 ///
 /// * `logits` — raw model output scores of length `vocab_size`.
 /// * `config` — sampling configuration (temperature, top-k, top-p, seed).
+/// * `rng`    — mutable reference to a PRNG, advanced on each call so
+///   that subsequent calls draw different random values.
 ///
 /// # Returns
 ///
@@ -404,9 +406,10 @@ fn sample_from_cdf(probs: &[f32], rng: &mut XorShift64) -> usize {
 ///     top_p: 0.95,
 ///     seed: Some(42),
 /// };
-/// let token_id = sample(&logits, &config);
+/// let mut rng = XorShift64::new(42);
+/// let token_id = sample_with_rng(&logits, &config, &mut rng);
 /// ```
-pub fn sample(logits: &[f32], config: &SamplingConfig) -> usize {
+pub fn sample_with_rng(logits: &[f32], config: &SamplingConfig, rng: &mut XorShift64) -> usize {
     assert!(!logits.is_empty(), "sample: logits must not be empty");
 
     // Step 1: temperature == 0 => greedy.
@@ -468,19 +471,22 @@ pub fn sample(logits: &[f32], config: &SamplingConfig) -> usize {
         }
     }
 
-    // Step 6: CDF sampling with our own PRNG.
-    let mut rng = XorShift64::new(config.seed.unwrap_or(12345));
-    let r = rng.next_f32();
-    let mut cumsum = 0.0f32;
-    for (i, &p) in scaled.iter().enumerate() {
-        cumsum += p;
-        if cumsum > r {
-            return i;
-        }
-    }
+    // Step 6: CDF sampling using the caller-provided RNG.
+    // rng is advanced by one step on each call, producing different draws.
+    sample_from_cdf(&scaled, rng)
+}
 
-    // Fallback: return last index (handles floating-point rounding).
-    scaled.len() - 1
+/// Convenience wrapper that creates a fresh RNG on each call.
+///
+/// **Note**: This function creates a new `XorShift64` from the seed on every
+/// invocation, meaning every non-greedy token gets the same first random draw.
+/// For correct autoregressive sampling (different draws per token), use
+/// [`sample_with_rng`] with a persisted RNG instead.
+///
+/// This wrapper is kept for backward compatibility with existing tests.
+pub fn sample(logits: &[f32], config: &SamplingConfig) -> usize {
+    let mut rng = XorShift64::new(config.seed.unwrap_or(12345));
+    sample_with_rng(logits, config, &mut rng)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
