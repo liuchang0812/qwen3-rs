@@ -6,3 +6,7 @@ model/model.safetensors
 
 # Claude Code local settings
 .claude/
+cuda_local/
+*.deb
+SESSION_SUMMARY.md
+cuda_local/

@@ -9,6 +9,9 @@
 //! the code easy to read and understand, which is the goal of this
 //! educational project.
 
+#[cfg(feature = "gpu")]
+use crate::gpu::GpuContext;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tensor struct
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,14 +376,14 @@ impl Tensor {
     ///
     /// Panics if either argument is not 2-D or the inner dimensions
     /// don't match (`K` must agree).
+    #[allow(unreachable_code)]
     pub fn matmul(&self, other: &Tensor) -> Tensor {
-        // --- Validate dimensions ---
         assert_eq!(self.ndim(), 2, "matmul: left operand must be 2-D, got {:?}", self.shape);
         assert_eq!(other.ndim(), 2, "matmul: right operand must be 2-D, got {:?}", other.shape);
 
-        let m = self.shape[0];  // rows of A
-        let k = self.shape[1];  // cols of A == rows of B
-        let n = other.shape[1]; // cols of B
+        let m = self.shape[0];
+        let k = self.shape[1];
+        let n = other.shape[1];
 
         assert_eq!(
             other.shape[0], k,
@@ -388,26 +391,30 @@ impl Tensor {
             m, k, other.shape[0], n,
         );
 
-        // --- Allocate output ---
-        let mut result = vec![0.0f32; m * n];
+        #[cfg(feature = "gpu")]
+        return Tensor::new(
+            vec![m, n],
+            GpuContext::matmul_generic(&self.data, &other.data, m, n, k),
+        );
 
-        // --- Triple loop ---
-        // For every row i of the left matrix …
+        #[cfg(not(feature = "gpu"))]
+        return Self::matmul_cpu(self, other, m, n, k);
+
+        unreachable!()
+    }
+
+    #[cfg(not(feature = "gpu"))]
+    fn matmul_cpu(&self, _other: &Tensor, m: usize, n: usize, k: usize) -> Tensor {
+        let mut result = vec![0.0f32; m * n];
         for i in 0..m {
-            // … and every column j of the right matrix …
             for j in 0..n {
-                // … compute the dot product over the shared dimension k.
                 let mut sum = 0.0f32;
                 for ki in 0..k {
-                    // A[i][k] is at flat index i*k + ki  (row-major)
-                    // B[k][j] is at flat index ki*n + j
-                    sum += self.data[i * k + ki] * other.data[ki * n + j];
+                    sum += self.data[i * k + ki] * _other.data[ki * n + j];
                 }
-                // C[i][j] is at flat index i*n + j
                 result[i * n + j] = sum;
             }
         }
-
         Tensor::new(vec![m, n], result)
     }
 

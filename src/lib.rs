@@ -10,3 +10,6 @@ pub mod attention;
 pub mod ffn;
 pub mod sampling;
 pub mod inference;
+
+#[cfg(feature = "gpu")]
+pub mod gpu;
