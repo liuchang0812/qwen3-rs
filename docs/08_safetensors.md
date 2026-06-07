@@ -283,10 +283,10 @@ This is a deliberate choice for an educational project:
 
 | Dtype | Bytes per element | Qwen3-0.6B total | Typical use |
 |-------|-------------------|---------------------|-------------|
-| F32   | 4                 | ~2.3 GB             | Training, educational inference |
-| F16   | 2                 | ~1.7 GB             | GPU inference |
-| BF16  | 2                 | ~1.7 GB             | Training & GPU inference |
-| Q8    | 1                 | ~0.85 GB            | Quantized CPU inference |
+| F32   | 4                 | ~2.4 GB             | Training, educational inference |
+| F16   | 2                 | ~1.2 GB             | GPU inference |
+| BF16  | 2                 | ~1.2 GB             | Training & GPU inference |
+| Q8    | 1                 | ~0.6 GB             | Quantized CPU inference |
 
 ---
 
@@ -455,7 +455,7 @@ Qwen3-0.6B at F32 has approximately 596 million parameters. Each F32
 parameter is 4 bytes, so the total tensor data is:
 
 ```
-596M × 4 bytes ≈ 2.3 GB
+596M × 4 bytes ≈ 2.4 GB
 ```
 
 The JSON header for this model is tiny by comparison — a few tens of
@@ -466,13 +466,13 @@ kilobytes. So the file is almost entirely raw tensor data.
 Our `read_safetensors` function reads every tensor into a `Vec<f32>` and
 stores them all in a `HashMap`. For Qwen3-0.6B, this means:
 
-- ~2.3 GB for the `Vec<f32>` buffers (the tensor data itself).
+- ~2.4 GB for the `Vec<f32>` buffers (the tensor data itself).
 - Some overhead for the `HashMap` structure and `String` keys (negligible).
 - During reading, we also allocate temporary `raw_bytes` buffers (freed
   after conversion to `Vec<f32>`).
 
 The peak memory usage is roughly 2× the data size during reading (one copy
-in `raw_bytes`, one in the final `Vec<f32>`), settling to ~2.3 GB after
+in `raw_bytes`, one in the final `Vec<f32>`), settling to ~2.4 GB after
 reading is complete. This is fine for a model that fits in RAM.
 
 ### The Tensor Lifecycle
@@ -519,11 +519,11 @@ support it. The key design choices that enable mmap are:
 
 | Component | Memory (F32) |
 |-----------|-------------|
-| Model weights | ~2.3 GB |
+| Model weights | ~2.4 GB |
 | KV cache (28 layers, seq_len=2048) | ~224 MB |
 | Activations (per forward pass) | ~10 MB |
 | Tokenizer, config, misc. | ~10 MB |
-| **Total** | **~3.7 GB** |
+| **Total** | **~3.8 GB** |
 
 This fits comfortably on any modern laptop with 8+ GB of RAM. For a 7B
 model in F32, the weights alone would be ~28 GB, which requires a machine
@@ -541,7 +541,7 @@ with 32+ GB of RAM or the use of F16/quantized weights.
 | data_offsets | Byte ranges `[start, end]` into the data section |
 | Our dtype support | F32 only; F16/BF16 produce clear error messages |
 | byteorder crate | Reads multi-byte values (u64, f32) in specified endianness |
-| Memory for 0.8B | ~2.3 GB in F32 — fits in RAM, no mmap needed |
+| Memory for 0.6B | ~2.4 GB in F32 — fits in RAM, no mmap needed |
 | Memory mapping | Enables loading models larger than RAM by paging data on demand |
 
 The safetensors format is a beautiful example of good design: it solves a

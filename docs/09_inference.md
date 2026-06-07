@@ -326,16 +326,16 @@ At various sequence lengths:
 
 | Sequence Length | Per Layer (KB) | Total (MB) |
 |----------------|----------------|------------|
-| 128            | 512            | 14         |
-| 512            | 2,048          | 56         |
-| 1,024          | 4,096          | 112        |
-| 2,048          | 8,192          | 224        |
-| 4,096          | 16,384         | 448        |
-| 8,192          | 32,768         | 896        |
-| 16,384         | 65,536         | 1,792      |
+| 128            | 1,024          | 28         |
+| 512            | 4,096          | 112        |
+| 1,024          | 8,192          | 224        |
+| 2,048          | 16,384         | 448        |
+| 4,096          | 32,768         | 896        |
+| 8,192          | 65,536         | 1,792      |
+| 16,384         | 131,072        | 3,584      |
 
 The cache grows linearly with sequence length. For Qwen3-0.6B with a
-4096-token context, the KV cache consumes nearly 450 MB. For larger models
+2048-token context, the KV cache consumes nearly 450 MB. For larger models
 with more layers and heads, the cache can easily exceed several gigabytes.
 
 ### Cache Growth Over Time
@@ -347,12 +347,12 @@ prompt. During decode, it grows by one row per step per layer.
 Time    Tokens Processed    Cache Rows (per layer)    Total Cache (MB)
 ----    ----------------    ----------------------    ----------------
 t=0     0 (empty)           0                          0
-t=1     50 (prefill)        50                         5.5
-t=2     51 (decode)         51                         5.6
-t=3     52 (decode)         52                         5.7
+t=1     50 (prefill)        50                         10.9
+t=2     51 (decode)         51                         11.2
+t=3     52 (decode)         52                         11.4
 ...
-t=450   499 (decode)        499                        54.7
-t=451   500 (decode)        500                        54.8
+t=450   499 (decode)        499                        109.2
+t=451   500 (decode)        500                        109.4
 ```
 
 After 500 decode steps following a 50-token prompt, the cache holds 550 rows

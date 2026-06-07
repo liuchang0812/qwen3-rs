@@ -42,7 +42,7 @@ with some differences in normalization and activation functions.
 | `max_position_embeddings` | 40,960   | Maximum sequence length                  |
 | `rms_norm_eps`         | 1e-6         | Epsilon for RMSNorm                      |
 | `rope_theta`           | 1,000,000.0  | Base frequency for Rotary Position Embedding |
-| `tie_emb_heads`        | true         | Whether output projection shares weights with embedding |
+| `tie_word_embeddings`  | true         | Whether output projection shares weights with embedding |
 
 ### 2.2 Single Transformer Block
 

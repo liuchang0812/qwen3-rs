@@ -48,7 +48,7 @@ The Transformer solved both problems simultaneously:
   pair of positions, no matter how far apart they are. Position 500 can attend
   to position 5 in a single operation with no degradation.
 
-### 1.3 Three Flavors of Transformers
+### 1.2 Three Flavors of Transformers
 
 Since the original paper, the Transformer architecture has branched into three
 main variants. Understanding the differences is important because they serve
@@ -705,7 +705,7 @@ embed_tokens: vocab_size x hidden_size = 151,936 x 1,024 = 155,580,224  (~155.6M
 | `down_proj`         | [1024, 3072]     | 3,145,728        | FFN down-projection       |
 | `input_layernorm`   | [1024]           | 1,024            | Pre-attention RMSNorm     |
 | `post_attn_layernorm`| [1024]          | 1,024            | Pre-FFN RMSNorm           |
-| **Block total**     |                  | **13,186,560**   | **~13.2M per block**      |
+| **Block total**     |                  | **15,730,688**   | **~15.7M per block**      |
 
 Note on the projection shapes: `q_proj` has output dimension
 `num_attention_heads * head_dim = 16 * 128 = 2,048`, while `k_proj` and `v_proj`
@@ -716,7 +716,7 @@ from GQA. With standard multi-head attention (16 KV heads), they would each be
 
 **All 28 blocks**:
 ```
-28 x 13,186,560 = 369,223,680  (~369.2M)
+28 x 15,730,688 = 440,459,264  (~440.5M)
 ```
 
 **lm_head** (output projection): Maps hidden states back to vocabulary logits.
@@ -733,11 +733,11 @@ model.norm: [1024] = 1,024  (negligible)
 
 ```
 Embedding:         155,580,224  (~155.6M)
-28 Blocks:         369,223,680  (~369.2M)
+28 Blocks:         440,459,264  (~440.5M)
 lm_head:           (tied with embedding — 0 extra parameters)
 Final norm:              1,024  (~0.001M)
 ─────────────────────────────────────────
-Total:             524,804,928  (~524.8M ≈ 0.6B)
+Total:             596,040,512  (~596.0M ≈ 0.6B)
 ```
 
 This is close to 0.6B, which is why the model is called Qwen3-0.6B.
@@ -752,10 +752,10 @@ Each parameter is stored as a 32-bit floating point number (f32), which uses
 4 bytes.
 
 ```
-524,804,928 parameters x 4 bytes = 2,099,219,712 bytes ≈ 2.1 GB
+596,040,512 parameters x 4 bytes = 2,384,162,048 bytes ≈ 2.4 GB
 ```
 
-Just loading the model weights into memory requires about 2.1 GB of RAM. During
+Just loading the model weights into memory requires about 2.4 GB of RAM. During
 inference, you also need memory for:
 
 - The KV cache: For a sequence of length L, the cache stores
@@ -772,13 +772,13 @@ sequences and grows with context length.
 Looking at the breakdown, the parameter distribution is:
 
 ```
-Embedding:  155.6M  (29.7%)
-Blocks:     369.2M  (70.3%)
+Embedding:  155.6M  (26.1%)
+Blocks:     440.5M  (73.9%)
 lm_head:    (tied with embedding)
 Norm:         0.001M (0.0%)
 ```
 
-The FFN is the largest component within each block (about 9.4M out of 13.2M).
+The FFN is the largest component within each block (about 9.4M out of 15.7M).
 The attention projections account for about 6.3M per block (q_proj, k_proj,
 v_proj, o_proj combined), and the FFN accounts for about 9.4M per block. The
 embedding (which also serves as lm_head due to weight tying) accounts for

@@ -167,7 +167,7 @@ freq_63 = 1 / 1000000^(126/128) = 0.000001
 Think of this as a clock with 64 hands. The first hand (freq_0 = 1.0) rotates
 fast -- it makes a full revolution every 2*pi ≈ 6.28 positions. It can
 precisely distinguish nearby positions but wraps around quickly. The last hand
-(freq_63 = 0.00001) rotates extremely slowly -- it barely moves over hundreds
+(freq_63 = 0.000001) rotates extremely slowly -- it barely moves over hundreds
 of positions. It provides coarse positional information that never wraps
 within practical sequence lengths.
 

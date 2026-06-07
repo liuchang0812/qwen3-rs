@@ -508,31 +508,31 @@ Each head's row of 6 values sums to 1.
 ### 步骤 9：计算输出
 
 ```
-V transposed: [6, 16, 64] → [16, 6, 64]
-attn_output = attn_weights · V:  [16, 1, 6] × [16, 6, 64] → [16, 1, 64]
+V transposed: [6, 16, 128] → [16, 6, 128]
+attn_output = attn_weights · V:  [16, 1, 6] × [16, 6, 128] → [16, 1, 128]
 ```
 
 ### 步骤 10：重塑与投影
 
 ```
-Transpose back: [16, 1, 64] → [1, 16, 64]
-Flatten heads:  [1, 16, 64] → [1, 1024]
-Output = attn_flat · W_o^T:  [1, 1024] × [1024, 1024] → [1, 1024]
+Transpose back: [16, 1, 128] → [1, 16, 128]
+Flatten heads:  [1, 16, 128] → [1, 2048]
+Output = attn_flat · W_o^T:  [1, 2048] × [2048, 1024] → [1, 1024]
 ```
 
 ### 完整形状摘要
 
 ```
 Input:             [1, 1024]
-After Q proj:      [1, 1024] → reshape [1, 16, 64]
-After K proj:      [1, 512]  → reshape [1, 8, 64]
-After V proj:      [1, 512]  → reshape [1, 8, 64]
+After Q proj:      [1, 2048] → reshape [1, 16, 128]
+After K proj:      [1, 1024] → reshape [1, 8, 128]
+After V proj:      [1, 1024] → reshape [1, 8, 128]
 After RoPE:        same shapes, values rotated
-After KV cache:    K [6, 8, 64], V [6, 8, 64]
-After GQA expand:  K [6, 16, 64], V [6, 16, 64]
+After KV cache:    K [6, 8, 128], V [6, 8, 128]
+After GQA expand:  K [6, 16, 128], V [6, 16, 128]
 Scores:            [16, 1, 6]
 Attn weights:      [16, 1, 6]
-Attn output:       [16, 1, 64] → [1, 16, 64] → [1, 1024]
+Attn output:       [16, 1, 128] → [1, 16, 128] → [1, 2048]
 Final output:      [1, 1024]
 ```
 
